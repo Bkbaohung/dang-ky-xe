@@ -62,7 +62,7 @@ function vLogin() {
   const demo = !API_URL;
   return `<div class="login">
     <form class="login-card" data-submit="login">
-      <div class="brand"><div class="logo"></div><div><div class="brand-t">BẢO HƯNG</div><div class="brand-s">Quản lý xe công tác</div></div></div>
+      <div class="brand"><img class="logo" src="logo.png" alt="Bảo Hưng"><div><div class="brand-t">BẢO HƯNG</div><div class="brand-s">Quản lý xe công tác</div></div></div>
       <h1>Đăng nhập</h1>
       <label class="fld"><span>Tên đăng nhập</span><input name="username" autocomplete="username" required autocapitalize="none" value="${esc(S.lastUser || '')}"></label>
       <label class="fld"><span>Mật khẩu</span><input name="password" type="password" autocomplete="current-password" required></label>
@@ -88,14 +88,14 @@ function vApp() {
   const nav = tabs.map(([k, l, sh]) => `<button class="nav-i ${k === S.tab ? 'on' : ''}" data-a="tab" data-v="${k}"><span class="nav-bar"></span><span class="nav-l">${desktop ? esc(l) : esc(sh)}</span>${badges[k] ? `<span class="nav-b">${badges[k]}</span>` : ''}</button>`).join('');
   return `<div class="shell">
   ${desktop ? `<aside class="side">
-    <div class="brand"><div class="logo"></div><div><div class="brand-t">BẢO HƯNG</div><div class="brand-s">Quản lý xe công tác</div></div></div>
+    <div class="brand"><img class="logo" src="logo.png" alt="Bảo Hưng"><div><div class="brand-t">BẢO HƯNG</div><div class="brand-s">Quản lý xe công tác</div></div></div>
     <nav class="side-nav">${nav}</nav>
     ${canInstall() ? `<button class="side-install" data-a="install">${DL_ICON}Tải app</button>` : ''}
     <button class="me" data-a="account"><span class="av">${esc(ini(u.name))}</span><span class="me-t"><b>${esc(u.name)}</b><small>${esc(ROLE_LABEL[role])}${u.dept ? ' · ' + esc(u.dept) : ''}</small></span><span class="me-c">⋯</span></button>
   </aside>` : ''}
   <div class="col">
     <header class="top">
-      ${desktop ? '' : '<div class="logo sm"></div>'}
+      ${desktop ? '' : '<img class="logo sm" src="logo.png" alt="Bảo Hưng">'}
       <div class="top-t"><div class="muted small">${WDL[new Date().getDay()]}, ${dmy(T)}${API_URL ? '' : ' · <b style="color:#A31E22">Dùng thử</b>'}</div><div class="h1">${esc(tabLabel)}</div></div>
       ${canBook && desktop ? `<button class="btn btn-p" data-a="newTrip">+ Đặt xe công tác</button>` : ''}
       <button class="icon-btn" data-a="refresh" title="Tải lại">${S.loading ? '<span class="spin"></span>' : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>'}</button>
