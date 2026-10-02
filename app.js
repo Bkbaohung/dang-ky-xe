@@ -2,10 +2,17 @@
 const TK = 'bh-xe-token', LU = 'bh-xe-last-user';
 const S = {
   token: localStorage.getItem(TK) || '', lastUser: localStorage.getItem(LU) || '',
-  data: null, tab: '', sel: null, pick: {}, act: {}, form: null, filter: 'pending', week: 0, period: 'm1',
+  installHidden: false, data: null, tab: '', sel: null, pick: {}, act: {}, form: null, filter: 'pending', week: 0, period: 'm1',
   notifOpen: false, toast: '', toastErr: false, loading: false, busy: false, loginErr: '', seen: null
 };
 const root = document.getElementById('app');
+/* ------------------------------------------------------------ cài app (PWA) */
+let _installEvt = null;
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const canInstall = () => !isStandalone() && (!!_installEvt || isIOS() || !S.installHidden);
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); _installEvt = e; render(); });
+window.addEventListener('appinstalled', () => { _installEvt = null; S.installHidden = true; toast('Đã cài app lên thiết bị'); });
 
 /* ------------------------------------------------------------ máy chủ */
 let _demo = null;
@@ -140,7 +147,11 @@ const A = {
   logout: async () => { try { await call('logout'); } catch (e) { } S.token = ''; S.data = null; S.form = null; S.sel = null; localStorage.removeItem(TK); render(); },
   resetDemo: () => { resetDemo(); S.token = ''; S.data = null; S.form = null; localStorage.removeItem(TK); render(); },
   demoLogin: v => doLogin(v, '123456'),
-  exportCsv: () => exportCsv()
+  exportCsv: () => exportCsv(),
+  install: () => {
+    if (_installEvt) { const ev = _installEvt; ev.prompt(); ev.userChoice.then(c => { if (c.outcome === 'accepted') { _installEvt = null; S.installHidden = true; } S.form = null; render(); }); return Promise.resolve(); }
+    S.form = { kind: 'install', vals: {} };
+  }
 };
 
 async function doLogin(username, password) {

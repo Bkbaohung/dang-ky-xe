@@ -20,6 +20,7 @@ const ini = n => String(n || '?').trim().split(/\s+/).slice(-2).map(w => w[0]).j
 const overlap = (a, b) => a.start <= b.end && b.start <= a.end;
 const cost = t => N(t.fuel) + N(t.toll) + N(t.park) + N(t.other);
 const relT = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'Vừa xong' : m < 60 ? m + ' phút trước' : m < 1440 ? Math.round(m / 60) + ' giờ trước' : Math.round(m / 1440) + ' ngày trước'; };
+const DL_ICON = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>';
 const ACTIVE = ['assigned', 'accepted', 'ongoing'];
 const OPEN = ['pending', 'assigned', 'accepted', 'ongoing'];
 const DEPTS = ['Kinh doanh', 'Mua hàng', 'Kế toán', 'Sản xuất', 'Cơ điện', 'Hành chính', 'Ban Giám đốc'];
@@ -67,6 +68,7 @@ function vLogin() {
       <label class="fld"><span>Mật khẩu</span><input name="password" type="password" autocomplete="current-password" required></label>
       ${S.loginErr ? `<div class="err">${esc(S.loginErr)}</div>` : ''}
       <button class="btn btn-p btn-lg" ${S.busy ? 'disabled' : ''}>${S.busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
+      ${canInstall() ? `<button type="button" class="btn btn-s btn-lg" data-a="install">${DL_ICON}Tải app về điện thoại / máy tính</button>` : ''}
       ${demo ? `<div class="demo-box"><b>Chế độ dùng thử</b> (chưa kết nối Google Sheet). Mật khẩu chung: <code>123456</code>
         <div class="demo-users">${['admin', 'dieuphoi', 'nhanvien', 'laixe', 'giamdoc'].map(u => `<button type="button" class="chip" data-a="demoLogin" data-v="${u}">${u}</button>`).join('')}</div></div>` : `<div class="muted small">Quên mật khẩu? Liên hệ quản trị hệ thống để được cấp lại.</div>`}
     </form></div>`;
@@ -88,6 +90,7 @@ function vApp() {
   ${desktop ? `<aside class="side">
     <div class="brand"><div class="logo"></div><div><div class="brand-t">BẢO HƯNG</div><div class="brand-s">Quản lý xe công tác</div></div></div>
     <nav class="side-nav">${nav}</nav>
+    ${canInstall() ? `<button class="side-install" data-a="install">${DL_ICON}Tải app</button>` : ''}
     <button class="me" data-a="account"><span class="av">${esc(ini(u.name))}</span><span class="me-t"><b>${esc(u.name)}</b><small>${esc(ROLE_LABEL[role])}${u.dept ? ' · ' + esc(u.dept) : ''}</small></span><span class="me-c">⋯</span></button>
   </aside>` : ''}
   <div class="col">
@@ -97,6 +100,7 @@ function vApp() {
       ${canBook && desktop ? `<button class="btn btn-p" data-a="newTrip">+ Đặt xe công tác</button>` : ''}
       <button class="icon-btn" data-a="refresh" title="Tải lại">${S.loading ? '<span class="spin"></span>' : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>'}</button>
       <button class="icon-btn" data-a="notif" title="Thông báo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>${unread ? `<span class="dot-n">${unread}</span>` : ''}</button>
+      ${!desktop && canInstall() ? `<button class="icon-btn" data-a="install" title="Tải app">${DL_ICON}</button>` : ''}
       ${desktop ? '' : `<button class="av av-btn" data-a="account">${esc(ini(u.name))}</button>`}
     </header>
     <main class="main">${vTab(cf)}</main>
@@ -383,11 +387,22 @@ function vForm() {
       + F('password', v.id ? 'Đặt lại mật khẩu (để trống nếu giữ nguyên)' : 'Mật khẩu (tối thiểu 6 ký tự)', 'text') + (v.id ? F('active', 'Trạng thái', 'select', { options: [{ v: 'true', l: 'Hoạt động' }, { v: 'false', l: 'Khoá tài khoản' }] }) : '');
   }
   if (f.kind === 'password') { title = 'Đổi mật khẩu'; fields = F('old', 'Mật khẩu hiện tại', 'password', { full: true }) + F('next', 'Mật khẩu mới (tối thiểu 6 ký tự)', 'password', { full: true }) + F('next2', 'Nhập lại mật khẩu mới', 'password', { full: true }); submit = 'Đổi mật khẩu'; }
+  if (f.kind === 'install') {
+    const ios = isIOS();
+    const steps = ios
+      ? ['Mở trang này bằng <b>Safari</b> (Chrome trên iPhone không cài được).', 'Bấm nút <b>Chia sẻ</b> <span class="kbd">⬆︎</span> ở thanh dưới cùng.', 'Kéo xuống, chọn <b>Thêm vào MH chính</b> (Add to Home Screen).', 'Bấm <b>Thêm</b>. Biểu tượng "Xe công tác" sẽ xuất hiện trên màn hình.']
+      : ['Mở trang này bằng <b>Chrome</b> hoặc <b>Edge</b>.', 'Bấm menu <span class="kbd">⋮</span> ở góc trên bên phải.', 'Chọn <b>Cài đặt ứng dụng</b> / <b>Thêm vào màn hình chính</b> (Install app).', 'Bấm <b>Cài đặt</b>. App sẽ mở như một ứng dụng riêng.'];
+    return `<div class="scrim" style="z-index:50" data-a="closeForm"></div><div class="modal">
+      <div class="row-b" style="padding:18px 20px 6px;align-items:flex-start"><div><b style="font-size:19px">Tải app về ${ios ? 'iPhone / iPad' : 'thiết bị'}</b><div class="muted small" style="margin-top:3px">Cài một lần, mở nhanh từ màn hình chính và nhận thông báo.</div></div><button type="button" class="btn btn-s btn-sq" data-a="closeForm">×</button></div>
+      <ol class="steps-ol">${steps.map(s => `<li>${s}</li>`).join('')}</ol>
+      <div style="padding:0 20px 20px;display:flex;justify-content:flex-end"><button class="btn btn-p" data-a="closeForm">Đã hiểu</button></div></div>`;
+  }
   if (f.kind === 'account') {
     const u = d.me;
     return `<div class="scrim" style="z-index:50" data-a="closeForm"></div><div class="modal">
       <div class="row" style="gap:12px;padding:20px"><span class="av av-l" style="width:46px;height:46px;font-size:16px">${esc(ini(u.name))}</span><div style="flex:1"><b style="font-size:17px">${esc(u.name)}</b><div class="muted small">@${esc(u.username)} · ${esc(ROLE_LABEL[u.role])}${u.dept ? ' · ' + esc(u.dept) : ''}</div></div><button class="btn btn-s btn-sq" data-a="closeForm">×</button></div>
       <div style="padding:0 20px 20px;display:flex;flex-direction:column;gap:8px">
+        ${canInstall() ? `<button class="btn btn-p btn-lg" data-a="install">${DL_ICON}Tải app về thiết bị</button>` : ''}
         <button class="btn btn-s btn-lg" data-a="changePass">Đổi mật khẩu</button>
         ${'Notification' in window && Notification.permission !== 'granted' ? '<button class="btn btn-s btn-lg" data-a="enablePush">Bật thông báo trên thiết bị này</button>' : ''}
         <button class="btn btn-d btn-lg" data-a="logout">Đăng xuất</button>
