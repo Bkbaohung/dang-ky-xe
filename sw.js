@@ -1,5 +1,5 @@
 // Service worker tối giản: cho phép cài app (PWA) và hiển thị thông báo. Luôn lấy dữ liệu mới từ mạng.
-const CACHE = 'bh-xe-v6';
+const CACHE = 'bh-xe-v7';
 const SHELL = ['./', 'index.html', 'logic.js', 'views.js', 'daily.js', 'maint.js', 'app.js', 'manifest.json', 'icon-192.png', 'logo.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {})); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));

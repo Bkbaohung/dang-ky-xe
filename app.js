@@ -1,5 +1,5 @@
 /* Điều khiển ứng dụng: trạng thái, gọi máy chủ, xử lý thao tác. */
-const TK = 'bh-xe-token', LU = 'bh-xe-last-user';
+const TK = 'bh-xe-token', LU = 'bh-xe-last-user', CK = 'bh-xe-cache';
 const S = {
   token: localStorage.getItem(TK) || '', lastUser: localStorage.getItem(LU) || '',
   installHidden: false, logSel: null, logAct: {}, logEdit: null, reqSel: null, reqAct: {}, reqEdit: null, viewer: null, reqFilter: '', logFilter: '', logDrv: '', data: null, tab: '', sel: null, pick: {}, act: {}, form: null, filter: 'pending', week: 0, period: 'm1',
@@ -59,7 +59,7 @@ async function call(action, params) {
     try { res = await r.json(); } catch (e) { throw new Error('Máy chủ trả dữ liệu không hợp lệ. Kiểm tra lại quyền truy cập của Web App ("Bất kỳ ai").'); }
   }
   if (!res.ok) {
-    if (res.auth) { S.token = ''; localStorage.removeItem(TK); S.data = null; S.loginErr = res.error; }
+    if (res.auth) { S.token = ''; localStorage.removeItem(TK); localStorage.removeItem(CK); S.data = null; S.loginErr = res.error; }
     const e = new Error(res.error); e.auth = res.auth; throw e;
   }
   return res.data;
@@ -73,14 +73,15 @@ async function load(silent) {
     const unread = data.notifs.filter(n => !n.read);
     if (S.seen) unread.filter(n => !S.seen.has(n.id)).slice(0, 3).forEach(n => pushNotify(n.text));
     S.seen = new Set(data.notifs.map(n => n.id));
-    S.data = data;
+    S.data = data; S.bootErr = '';
+    try { localStorage.setItem(CK, JSON.stringify(data)); } catch (e) { localStorage.removeItem(CK); }
     const tabs = (TABS[data.me.role] || []).map(x => x[0]);
     if (!tabs.includes(S.tab)) S.tab = tabs[0];
     if (S.sel && !data.trips.find(t => t.id === S.sel)) S.sel = null;
     if (S.reqSel && !(data.mreqs || []).find(r => String(r.id) === String(S.reqSel))) S.reqSel = null;
     if (S.logSel && !(data.logs || []).find(l => String(l.id) === String(S.logSel))) S.logSel = null;
   } catch (e) {
-    if (!e.auth) toast(e.message, true);
+    if (!e.auth) { if (S.data) toast(e.message, true); else S.bootErr = e.message; }
   }
   S.loading = false; render();
 }
@@ -112,7 +113,7 @@ async function mutate(action, params, okMsg, after) {
 /* ------------------------------------------------------------ render */
 function render() {
   const dr = document.querySelector('.dr-b'), drTop = dr ? dr.scrollTop : 0, y = window.scrollY;
-  root.innerHTML = S.data ? vApp() : vLogin();
+  root.innerHTML = S.data ? vApp() : S.token ? vBoot() : vLogin();
   const dr2 = document.querySelector('.dr-b'); if (dr2) dr2.scrollTop = drTop;
   window.scrollTo(0, y);
 }
@@ -154,8 +155,8 @@ const A = {
   openNotif: v => { const n = S.data.notifs.find(x => x.id === v); if (!n) return; n.read = true; call('notif.read', { ids: [v] }).catch(() => { }); S.notifOpen = false; if (String(n.tripId).startsWith('NK-')) A.logOpen(n.tripId); else if (String(n.tripId).startsWith('BD-')) A.reqOpen(n.tripId); else if (n.tripId) A.open(n.tripId); },
   enablePush: () => { if (!('Notification' in window)) return toast('Trình duyệt không hỗ trợ thông báo.', true); Notification.requestPermission().then(p => { toast(p === 'granted' ? 'Đã bật thông báo trên thiết bị này' : 'Bạn đã chặn thông báo. Mở cài đặt trình duyệt để cho phép.', p !== 'granted'); }); },
   refresh: () => load(),
-  logout: async () => { try { await call('logout'); } catch (e) { } S.token = ''; S.data = null; S.form = null; S.logSel = null; S.logEdit = null; S.reqSel = null; S.reqEdit = null; S.sel = null; localStorage.removeItem(TK); render(); },
-  resetDemo: () => { resetDemo(); S.token = ''; S.data = null; S.form = null; S.logSel = null; S.logEdit = null; S.reqSel = null; S.reqEdit = null; localStorage.removeItem(TK); render(); },
+  logout: async () => { try { await call('logout'); } catch (e) { } S.token = ''; S.data = null; S.form = null; S.logSel = null; S.logEdit = null; S.reqSel = null; S.reqEdit = null; S.sel = null; localStorage.removeItem(TK); localStorage.removeItem(CK); render(); },
+  resetDemo: () => { resetDemo(); S.token = ''; S.data = null; S.form = null; S.logSel = null; S.logEdit = null; S.reqSel = null; S.reqEdit = null; localStorage.removeItem(TK); localStorage.removeItem(CK); render(); },
   demoLogin: v => doLogin(v, '123456'),
   exportCsv: () => exportCsv(),
   install: () => {
@@ -364,4 +365,22 @@ function seedLogs(ctx, a, rnd, pick, mk) {
   if (r) db.insert('notifs', { id: ctx.uuid(), to: 'driver:LX01', text: 'Báo cáo ngày ' + dm(r.date) + ' bị trả lại: ' + r.reviewNote, tripId: r.id, t: Date.now() - 200 * 60000, readBy: '' });
 }
 
-load();
+function vBoot() {
+  return `<div class="login"><div class="login-card" style="align-items:center;text-align:center">
+    <div class="brand"><img class="logo" src="logo.png" alt="Bảo Hưng"><div style="text-align:left"><div class="brand-t">BẢO HƯNG</div><div class="brand-s">Quản lý xe công tác</div></div></div>
+    ${S.bootErr ? `<div class="err">${esc(S.bootErr)}</div><div class="row-w" style="justify-content:center"><button class="btn btn-p" data-a="refresh">Thử lại</button><button class="btn btn-s" data-a="logout">Đăng xuất</button></div>`
+      : '<span class="spin" style="width:26px;height:26px"></span><div class="muted small">Đang tải dữ liệu…</div>'}
+  </div></div>`;
+}
+// Mở lại app: hiện ngay dữ liệu lần trước, rồi cập nhật ngầm
+if (S.token) {
+  try {
+    const c = JSON.parse(localStorage.getItem(CK) || 'null');
+    if (c && c.me) {
+      S.data = c; S.seen = new Set((c.notifs || []).map(n => n.id));
+      const tabs = (TABS[c.me.role] || []).map(x => x[0]); S.tab = tabs[0];
+    }
+  } catch (e) { }
+}
+render();
+load(true);
