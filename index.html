@@ -15,7 +15,15 @@
   // CẤU HÌNH: dán link Web App của Apps Script (dạng https://script.google.com/macros/s/.../exec)
   // Để trống = chế độ DÙNG THỬ (dữ liệu giả lưu trên trình duyệt).
   // ============================================================================
-  var API_URL = 'https://script.google.com/macros/s/AKfycbzMRNpMeVF_rwWOLYKOuK-3g43PEwg5JdqKvCw9s_GIgdDkkl6ot495TAPkOd1v1Y3b0w/exec';
+  var API_URL = '';
+  // Thông tin in trên giấy đề nghị thanh toán / phiếu chi. Điền địa chỉ và mã số thuế của công ty.
+  var COMPANY = {
+    name: 'CÔNG TY CỔ PHẦN QUỐC TẾ BẢO HƯNG',
+    short: 'Công ty CP Quốc tế Bảo Hưng',
+    address: '',
+    taxCode: '',
+    circular: '200/2014/TT-BTC ngày 22/12/2014'
+  };
 </script>
 <style>
 *{box-sizing:border-box}
@@ -172,13 +180,37 @@ b{font-weight:600}
 .nt>span{display:flex;flex-direction:column;gap:3px;font-size:13.5px}.nt small{font-size:11.5px;color:#8A8078}
 .toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;background:#1F1916;color:#fff;padding:12px 18px;border-radius:10px;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:calc(100vw - 30px);animation:inUp .2s ease}
 .toast-e{background:#8C1A1D}
-@media (max-width:560px){.fgrid{grid-template-columns:1fr}.dr-t{font-size:21px}}
+.tile.sel{border-color:#221C18;box-shadow:inset 0 0 0 1px #221C18}
+.sel-in{padding:9px 10px;border:1px solid #DCD3C7;border-radius:8px;font-size:14px;background:#fff;outline:none;min-height:38px}
+.ed-sec{display:flex;flex-direction:column;gap:10px}
+.ed-row{display:grid;grid-template-columns:96px minmax(0,1fr) minmax(0,1fr) 38px;gap:8px;align-items:center;padding:10px;border:1px solid #E7E0D6;border-radius:10px;background:#fff}
+.ed-row input:not([type=checkbox]),.ed-row select{width:100%;min-width:0;padding:9px 10px;border:1px solid #DCD3C7;border-radius:8px;font-size:14.5px;background:#fff;outline:none}
+.ed-row input:focus,.ed-row select:focus{border-color:#A31E22}
+.x-btn{width:38px;height:38px;border-radius:8px;border:1px solid #DCD3C7;background:#fff;cursor:pointer;font-size:18px;color:#8C1A1D}
+.chk{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer}.chk input{width:18px;height:18px;accent-color:#A31E22}
+.photo-line{display:flex;align-items:center;gap:12px;min-height:38px}
+.photo-btn{display:inline-flex;align-items:center;min-height:38px;padding:0 12px;border:1px dashed #B8892B;border-radius:8px;background:#FBF6EA;color:#5C4210;font-size:13px;font-weight:600;cursor:pointer}
+.thumb{width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid #E7E0D6;display:block;flex:none}
+.ed-row.ed-2{grid-template-columns:minmax(0,1fr) 130px 38px}
+.ed-row.ed-3{grid-template-columns:minmax(0,1fr) 120px auto 38px}
+.fchip{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid #E7E0D6;border-radius:10px;background:#fff;min-width:0}
+.fdoc{width:64px;height:64px;border-radius:8px;border:1px solid #E7E0D6;background:#F6E1E1;color:#A31E22;font-weight:700;display:flex;align-items:center;justify-content:center;text-decoration:none;flex:none}
+.fchip{cursor:pointer}.fchip:hover{border-color:#CDBFAE}.thumb{background:#F0EAE2}
+.viewer{position:fixed;inset:0;z-index:70;background:rgba(20,16,14,.94);display:flex;flex-direction:column}
+.vw-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px calc(10px);padding-top:calc(10px + env(safe-area-inset-top));color:#fff;background:#1F1916}
+.vw-h .btn-s{background:#2B231F;color:#fff;border-color:#4A3E36}
+.vw-b{flex:1;display:flex;align-items:center;justify-content:center;padding:12px;min-height:0}
+.vw-b img{max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:4px}
+.vw-b iframe{width:100%;height:100%;border:0;background:#fff;border-radius:6px}
+@media (max-width:560px){.ed-row.ed-2{grid-template-columns:minmax(0,1fr) 100px 38px}.ed-row.ed-3{grid-template-columns:minmax(0,1fr) 96px auto 38px}.fgrid{grid-template-columns:1fr}.dr-t{font-size:21px}}
 </style>
 </head>
 <body>
 <div id="app"><div class="login"><div class="spin" style="width:28px;height:28px"></div></div></div>
 <script src="logic.js"></script>
 <script src="views.js"></script>
+<script src="daily.js"></script>
+<script src="maint.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

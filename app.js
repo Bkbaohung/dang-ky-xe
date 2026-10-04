@@ -2,7 +2,7 @@
 const TK = 'bh-xe-token', LU = 'bh-xe-last-user';
 const S = {
   token: localStorage.getItem(TK) || '', lastUser: localStorage.getItem(LU) || '',
-  installHidden: false, data: null, tab: '', sel: null, pick: {}, act: {}, form: null, filter: 'pending', week: 0, period: 'm1',
+  installHidden: false, logSel: null, logAct: {}, logEdit: null, reqSel: null, reqAct: {}, reqEdit: null, viewer: null, reqFilter: '', logFilter: '', logDrv: '', data: null, tab: '', sel: null, pick: {}, act: {}, form: null, filter: 'pending', week: 0, period: 'm1',
   notifOpen: false, toast: '', toastErr: false, loading: false, busy: false, loginErr: '', seen: null
 };
 const root = document.getElementById('app');
@@ -18,7 +18,7 @@ window.addEventListener('appinstalled', () => { _installEvt = null; S.installHid
 let _demo = null;
 function demoCtx() {
   if (_demo) return _demo;
-  const KEY = 'bh-xe-demo-db-v1';
+  const KEY = 'bh-xe-demo-db-v3';
   let db = null; try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { }
   const save = () => localStorage.setItem(KEY, JSON.stringify(db));
   const ctx = {
@@ -30,12 +30,19 @@ function demoCtx() {
     },
     hash: s => { let h1 = 0xdeadbeef, h2 = 0x41c6ce57; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16); },
     uuid: () => (Date.now().toString(16) + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)).slice(0, 32),
-    now: () => Date.now(), today: () => today()
+    now: () => Date.now(), today: () => today(),
+    saveFile: (name, mime, b64) => {
+      const id = 'DEMO' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      try { localStorage.setItem('bh-xe-demo-file-' + id, JSON.stringify({ mime, name, data: b64 })); }
+      catch (e) { throw new Error('Bộ nhớ trình duyệt đã đầy (chế độ dùng thử). Bấm "Khôi phục dữ liệu dùng thử" hoặc chọn file nhỏ hơn.'); }
+      return 'https://drive.google.com/file/d/' + id + '/view';
+    },
+    readFile: id => { const s = localStorage.getItem('bh-xe-demo-file-' + id); if (!s) throw new Error('Không tìm thấy chứng từ (dữ liệu dùng thử đã bị xoá).'); return JSON.parse(s); }
   };
   if (!db || !db.users) { db = {}; Object.keys(BH_TABLES).forEach(t => db[t] = []); demoSeed(ctx); save(); }
   _demo = ctx; return ctx;
 }
-function resetDemo() { localStorage.removeItem('bh-xe-demo-db-v1'); _demo = null; }
+function resetDemo() { localStorage.removeItem('bh-xe-demo-db-v3'); Object.keys(localStorage).filter(k => k.startsWith('bh-xe-demo-file-')).forEach(k => localStorage.removeItem(k)); _demo = null; }
 
 async function call(action, params) {
   const req = { action, params: params || {}, token: S.token };
@@ -45,7 +52,8 @@ async function call(action, params) {
     res = BH_api(demoCtx(), JSON.parse(JSON.stringify(req)));
   } else {
     let r;
-    try { r = await fetch(API_URL + '?q=' + encodeURIComponent(JSON.stringify(req))); }
+    const body = JSON.stringify(req), big = action === 'file.upload' || action === 'log.save' || body.length > 1500;
+    try { r = big ? await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body }) : await fetch(API_URL + '?q=' + encodeURIComponent(body)); }
     catch (e) { throw new Error('Không kết nối được máy chủ. Kiểm tra mạng và thử lại.'); }
     if (!r.ok) throw new Error('Máy chủ trả lỗi ' + r.status + '.');
     try { res = await r.json(); } catch (e) { throw new Error('Máy chủ trả dữ liệu không hợp lệ. Kiểm tra lại quyền truy cập của Web App ("Bất kỳ ai").'); }
@@ -69,6 +77,8 @@ async function load(silent) {
     const tabs = (TABS[data.me.role] || []).map(x => x[0]);
     if (!tabs.includes(S.tab)) S.tab = tabs[0];
     if (S.sel && !data.trips.find(t => t.id === S.sel)) S.sel = null;
+    if (S.reqSel && !(data.mreqs || []).find(r => String(r.id) === String(S.reqSel))) S.reqSel = null;
+    if (S.logSel && !(data.logs || []).find(l => String(l.id) === String(S.logSel))) S.logSel = null;
   } catch (e) {
     if (!e.auth) toast(e.message, true);
   }
@@ -94,7 +104,7 @@ async function mutate(action, params, okMsg, after) {
     if (okMsg) toast(okMsg);
   } catch (e) {
     if (e.auth) { S.busy = false; return render(); }
-    if (S.form) S.form.err = e.message; else if (S.sel) S.act.err = e.message; else toast(e.message, true);
+    if (S.form) S.form.err = e.message; else if (S.logEdit) S.logEdit.err = e.message; else if (S.logSel) S.logAct.err = e.message; else if (S.reqEdit) S.reqEdit.err = e.message; else if (S.reqSel) S.reqAct.err = e.message; else if (S.sel) S.act.err = e.message; else toast(e.message, true);
   }
   S.busy = false; render();
 }
@@ -141,11 +151,11 @@ const A = {
   changePass: () => { S.form = { kind: 'password', vals: { old: '', next: '', next2: '' } }; },
   notif: () => { S.notifOpen = !S.notifOpen; },
   readAll: () => { S.data.notifs.forEach(n => n.read = true); call('notif.read', { all: true }).catch(() => { }); },
-  openNotif: v => { const n = S.data.notifs.find(x => x.id === v); if (!n) return; n.read = true; call('notif.read', { ids: [v] }).catch(() => { }); S.notifOpen = false; if (n.tripId) A.open(n.tripId); },
+  openNotif: v => { const n = S.data.notifs.find(x => x.id === v); if (!n) return; n.read = true; call('notif.read', { ids: [v] }).catch(() => { }); S.notifOpen = false; if (String(n.tripId).startsWith('NK-')) A.logOpen(n.tripId); else if (String(n.tripId).startsWith('BD-')) A.reqOpen(n.tripId); else if (n.tripId) A.open(n.tripId); },
   enablePush: () => { if (!('Notification' in window)) return toast('Trình duyệt không hỗ trợ thông báo.', true); Notification.requestPermission().then(p => { toast(p === 'granted' ? 'Đã bật thông báo trên thiết bị này' : 'Bạn đã chặn thông báo. Mở cài đặt trình duyệt để cho phép.', p !== 'granted'); }); },
   refresh: () => load(),
-  logout: async () => { try { await call('logout'); } catch (e) { } S.token = ''; S.data = null; S.form = null; S.sel = null; localStorage.removeItem(TK); render(); },
-  resetDemo: () => { resetDemo(); S.token = ''; S.data = null; S.form = null; localStorage.removeItem(TK); render(); },
+  logout: async () => { try { await call('logout'); } catch (e) { } S.token = ''; S.data = null; S.form = null; S.logSel = null; S.logEdit = null; S.reqSel = null; S.reqEdit = null; S.sel = null; localStorage.removeItem(TK); render(); },
+  resetDemo: () => { resetDemo(); S.token = ''; S.data = null; S.form = null; S.logSel = null; S.logEdit = null; S.reqSel = null; S.reqEdit = null; localStorage.removeItem(TK); render(); },
   demoLogin: v => doLogin(v, '123456'),
   exportCsv: () => exportCsv(),
   install: () => {
@@ -153,6 +163,8 @@ const A = {
     S.form = { kind: 'install', vals: {} };
   }
 };
+
+Object.assign(A, typeof LOG_ACTIONS !== 'undefined' ? LOG_ACTIONS : {}, typeof REQ_ACTIONS !== 'undefined' ? REQ_ACTIONS : {});
 
 async function doLogin(username, password) {
   S.busy = true; S.loginErr = ''; render();
@@ -167,7 +179,7 @@ async function doLogin(username, password) {
 function submitForm() {
   const f = S.form, v = f.vals, bool = x => String(x) !== 'false';
   f.err = '';
-  if (f.kind === 'trip') return mutate('trip.create', v, 'Đã gửi yêu cầu tới Điều phối', () => { S.form = null; if (S.data.me.role === 'sales') S.tab = 'mine'; else { S.tab = 'inbox'; S.filter = 'pending'; } });
+  if (f.kind === 'trip') return mutate('trip.create', v, 'Đã gửi yêu cầu tới Điều phối', () => { S.form = null; if (['sales', 'ketoan'].includes(S.data.me.role)) S.tab = 'mine'; else { S.tab = 'inbox'; S.filter = 'pending'; } });
   if (f.kind === 'car') return mutate('car.save', Object.assign({}, v, { active: bool(v.active) }), v.id ? 'Đã cập nhật xe' : 'Đã thêm xe', () => { S.form = null; });
   if (f.kind === 'driver') return mutate('driver.save', Object.assign({}, v, { active: bool(v.active) }), v.id ? 'Đã cập nhật lái xe' : 'Đã thêm lái xe', () => { S.form = null; });
   if (f.kind === 'maint') return mutate('maint.add', v, 'Đã ghi nhận ' + v.type.toLowerCase(), () => { S.form = null; });
@@ -228,12 +240,12 @@ document.addEventListener('change', e => {
   }
   if (S.form.kind === 'user' && k === 'role') render();
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.form) S.form = null; else if (S.sel) S.sel = null; else if (S.notifOpen) S.notifOpen = false; render(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.viewer) S.viewer = null; else if (S.form) S.form = null; else if (S.reqEdit) S.reqEdit = null; else if (S.reqSel) S.reqSel = null; else if (S.logEdit) S.logEdit = null; else if (S.logSel) S.logSel = null; else if (S.sel) S.sel = null; else if (S.notifOpen) S.notifOpen = false; render(); } });
 let _rw = innerWidth >= 900;
 window.addEventListener('resize', () => { const w = innerWidth >= 900; if (w !== _rw) { _rw = w; render(); } });
 setInterval(() => {
   const ae = document.activeElement, typing = ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName);
-  if (S.token && S.data && document.visibilityState === 'visible' && !S.busy && !S.form && !typing) load(true);
+  if (S.token && S.data && document.visibilityState === 'visible' && !S.busy && !S.form && !S.logEdit && !S.reqEdit && !S.viewer && !typing) load(true);
 }, 60000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.token && S.data && !S.form && !S.busy) load(true); });
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));
@@ -279,6 +291,77 @@ function demoSeed(ctx) {
   nt('user:' + uS.id, 'Chuyến đi Phố Nối đã có xe 29D-112.23, lái xe Phạm Văn Long.', '', 120);
   [[a(-12), 'X01', 'Bảo dưỡng', 'Bảo dưỡng 80.000 km: thay dầu, lọc gió, má phanh trước', 80050, 4850000], [a(-35), 'X04', 'Sửa chữa', 'Thay ắc quy', 55100, 2300000], [a(-60), 'X03', 'Đăng kiểm', 'Đăng kiểm định kỳ', 19800, 560000]]
     .forEach((m, i) => db.insert('maint', { id: 'M' + i, date: m[0], carId: m[1], type: m[2], content: m[3], km: m[4], cost: m[5], createdBy: uA.id }));
+  seedLogs(ctx, a, rnd, pick, mk);
+  seedReqs(ctx, a);
+}
+
+function seedReqs(ctx, a) {
+  const db = ctx.db, t0 = Date.now(), H = 3600e3, J = x => JSON.stringify(x), txt = it => it.map(x => x.name + ': ' + vnd(x.amount)).join('; '), sm = it => it.reduce((s, x) => s + x.amount, 0);
+  const U = { LX01: ['U-LX', 'Lê Văn Hùng'], LX02: ['U-LX2', 'Nguyễn Đức Thắng'], LX03: ['U-LX3', 'Phạm Văn Long'], LX04: ['U-LX4', 'Trần Quang Huy'] };
+  const plate = id => db.all('cars').find(c => c.id === id).plate;
+  const base = (id, dv, car, type, km, reason, vendor, planDate, items, status, extra) => Object.assign({ id, createdBy: U[dv][0], createdName: U[dv][1], drvId: dv, carId: car, plate: plate(car), type, km, reason, vendor, planDate,
+    items: J(items), itemsText: txt(items), estimate: sm(items), urgent: false, status, reviewNote: '', approvedBy: '', approvedAt: '', doneDate: '', doneKm: '', actual: '[]', actualText: '', actualTotal: 0, payee: 'driver', vendorBank: '', nextDue: '', files: '[]',
+    reportedAt: '', confirmedBy: '', confirmedAt: '', paidBy: '', paidAt: '', payRef: '', createdAt: t0 - 30 * H, updatedAt: t0 - 30 * H }, extra || {});
+  const rep = (act, doneDate, doneKm, payee, more) => Object.assign({ doneDate, doneKm, actual: J(act), actualText: txt(act), actualTotal: sm(act), payee, reportedAt: t0 - 20 * H }, more || {});
+  const it1 = [{ name: 'Thay dầu máy 5W-30', amount: 850000 }, { name: 'Lọc dầu', amount: 150000 }, { name: 'Lọc gió động cơ', amount: 250000 }, { name: 'Kiểm tra, vệ sinh phanh', amount: 300000 }];
+  db.insert('mreqs', base('BD-1001', 'LX01', 'X01', 'Bảo dưỡng định kỳ', 84210, 'Xe sắp đến mốc bảo dưỡng 85.000 km.', 'Toyota Long Biên', a(2), it1, 'proposed', { createdAt: t0 - 3 * H, updatedAt: t0 - 3 * H }));
+  db.insert('mreqs', base('BD-1002', 'LX01', 'X01', 'Sửa chữa', 84150, 'Gạt mưa mòn, nước làm mát hao.', 'Garage Minh Phát', a(-1), [{ name: 'Thay bộ gạt mưa', amount: 320000 }, { name: 'Bổ sung nước làm mát', amount: 180000 }], 'approved', { approvedBy: 'Trần Văn Minh', approvedAt: t0 - 26 * H }));
+  db.insert('mreqs', base('BD-1003', 'LX04', 'X02', 'Đăng kiểm', 132400, 'Xe quá hạn đăng kiểm 3 ngày.', 'Trung tâm đăng kiểm 29-05V', a(1), [{ name: 'Phí kiểm định', amount: 340000 }, { name: 'Lệ phí cấp giấy chứng nhận', amount: 90000 }], 'approved', { approvedBy: 'Trần Văn Minh', approvedAt: t0 - 20 * H }));
+  const a4 = [{ name: 'Ắc quy GS 65Ah', amount: 2150000, invoice: true }, { name: 'Công thay', amount: 100000, invoice: true }];
+  db.insert('mreqs', base('BD-1004', 'LX02', 'X03', 'Thay lốp, ắc quy', 21500, 'Xe khó nổ máy buổi sáng, ắc quy yếu.', 'Ắc quy Thành Công', a(-3), [{ name: 'Ắc quy 65Ah', amount: 2300000 }], 'reported', Object.assign({ approvedBy: 'Trần Văn Minh', approvedAt: t0 - 70 * H }, rep(a4, a(-1), 21480, 'driver'))));
+  const a5 = [{ name: 'Lốp Michelin 205/55R16 x2', amount: 4600000, invoice: true }, { name: 'Cân bằng động, đảo lốp', amount: 200000, invoice: true }];
+  db.insert('mreqs', base('BD-1005', 'LX03', 'X05', 'Thay lốp, ắc quy', 40110, 'Hai lốp trước mòn sát vạch.', 'Lốp Thịnh Phát', a(-6), [{ name: 'Lốp 205/55R16 x2', amount: 4500000 }, { name: 'Cân bằng động', amount: 200000 }], 'confirmed', Object.assign({ approvedBy: 'Trần Văn Minh', approvedAt: t0 - 150 * H, confirmedBy: 'Trần Văn Minh', confirmedAt: t0 - 8 * H }, rep(a5, a(-4), 40020, 'vendor', { vendorBank: '1903 5566 7788 – Techcombank – Cty TNHH Lốp Thịnh Phát' }))));
+  const a6 = [{ name: 'Nạp gas điều hoà', amount: 450000, invoice: true }, { name: 'Vệ sinh dàn lạnh', amount: 350000, invoice: false }];
+  db.insert('mreqs', base('BD-1006', 'LX01', 'X04', 'Sửa chữa', 56100, 'Điều hoà không mát.', 'Điện lạnh ô tô Hoàng Gia', a(-12), [{ name: 'Nạp gas điều hoà', amount: 450000 }, { name: 'Vệ sinh dàn lạnh', amount: 350000 }], 'paid', Object.assign({ approvedBy: 'Trần Văn Minh', approvedAt: t0 - 300 * H, confirmedBy: 'Trần Văn Minh', confirmedAt: t0 - 250 * H, paidBy: 'Đinh Thị Hoa', paidAt: t0 - 200 * H, payRef: 'PC-0371', createdAt: t0 - 320 * H, updatedAt: t0 - 200 * H }, rep(a6, a(-11), 56180, 'driver'))));
+  const nt = (to, text, id, ago) => db.insert('notifs', { id: ctx.uuid(), to, text, tripId: id, t: t0 - ago * 60000, readBy: '' });
+  nt('role:dispatch', 'Lê Văn Hùng gửi đề xuất bảo dưỡng định kỳ xe 29A-123.45, dự toán 1.550.000 đ.', 'BD-1001', 15);
+  nt('role:dispatch', 'Nguyễn Đức Thắng đã nộp chứng từ BD-1004 (Thay lốp, ắc quy xe 30H-246.80): 2.250.000 đ. Cần xác nhận.', 'BD-1004', 70);
+  nt('role:ketoan', 'Cần thanh toán 4.800.000 đ cho BD-1005 (Thay lốp, ắc quy xe 29D-112.23, chuyển khoản Lốp Thịnh Phát).', 'BD-1005', 45);
+  nt('driver:LX01', 'Đề xuất BD-1002 (Sửa chữa xe 29A-123.45) đã được duyệt. Sau khi làm xong, nhập chi phí thực tế kèm chứng từ.', 'BD-1002', 25);
+}
+
+function seedLogs(ctx, a, rnd, pick, mk) {
+  const db = ctx.db;
+  BH_makeUser(ctx, { id: 'U-KT', username: 'ketoan', name: 'Đinh Thị Hoa', role: 'ketoan', dept: 'Kế toán', phone: '0918 640 225' }, '123456');
+  mk({ name: 'Đỗ Minh Tuấn', dept: 'Kinh doanh', dest: 'Bắc Ninh – Từ Sơn', purpose: 'Giao hàng mẫu cho đại lý', start: a(-1), end: a(-1), time: '07:30', status: 'done', carId: 'X01', drvId: 'LX01', kmStart: 84080, kmEnd: 84210, fuel: 350000, toll: 70000, park: 20000, other: 0 });
+  const NAMES = { LX01: 'Lê Văn Hùng', LX02: 'Nguyễn Đức Thắng', LX03: 'Phạm Văn Long', LX04: 'Trần Quang Huy' };
+  const LOCAL = [['Công ty', 'Kho Đông Anh', 'Chở vật tư'], ['Công ty', 'Ngân hàng Vietcombank', 'Đưa kế toán đi giao dịch'], ['Công ty', 'Sân bay Nội Bài', 'Đón khách'], ['Công ty', 'Garage Toyota Long Biên', 'Kiểm tra xe'], ['Kho Đông Anh', 'Công ty', 'Về công ty'], ['Công ty', 'Bưu điện Long Biên', 'Gửi hồ sơ']];
+  const XTRA = [['Rửa xe', 60000, CASH, false, 'Rửa xe sau chuyến'], ['Gửi xe', 30000, CASH, false, 'Gửi xe chờ khách'], ['Công tác phí / ăn uống', 80000, CASH, false, 'Ăn trưa khi chờ khách'], ['Nhiên liệu', 600000, 'Thẻ xăng công ty', true, 'Petrolimex Đông Anh'], ['Cầu đường / BOT', 45000, CASH, true, 'BOT Pháp Vân – Cầu Giẽ'], ['Nhiên liệu', 450000, CASH, true, 'Cây xăng Mipec Long Biên']];
+  const trips = db.all('trips'), cars = db.all('cars'), cur = {}, out = [];
+  cars.forEach(c => cur[c.id] = N(c.odo)); cur.X01 = 84080;
+  const stop = () => { const s = pick(LOCAL); return { time: pick(['07:30', '09:00', '13:30', '15:00']), from: s[0], to: s[1], purpose: s[2] }; };
+  for (let i = 1; i <= 14; i++) {
+    const day = a(-i), base = parse(day).getTime();
+    Object.keys(NAMES).forEach((dv, di) => {
+      if (dv === 'LX01' && i === 1) return;
+      const ts = trips.filter(t => t.drvId === dv && (t.status === 'done' || t.status === 'ongoing') && t.start <= day && t.end >= day);
+      if (!ts.length && rnd() < 0.5) return;
+      const route = ts.length ? (rnd() < 0.3 ? [stop()] : []) : [stop(), stop()];
+      const carId = ts.length ? ts[0].carId : 'X0' + (di + 1), car = cars.find(c => c.id === carId);
+      const km = ts.length ? ts.reduce((s, t) => s + (N(t.kmEnd) ? Math.round((N(t.kmEnd) - N(t.kmStart)) / (diffD(t.start, t.end) + 1)) : 150), 0) + route.length * 15 : 40 + Math.floor(rnd() * 60);
+      const ke = cur[carId], ks = ke - km; cur[carId] = ks;
+      const lines = []; for (let j = Math.floor(rnd() * 3); j > 0; j--) { const x = pick(XTRA); lines.push({ type: x[0], amount: x[1], method: x[2], invoice: x[3], note: x[4], photo: '' }); }
+      let status = i > 5 ? 'paid' : i > 2 ? 'approved' : 'submitted', reviewNote = '';
+      if (dv === 'LX01' && i === 3) { status = 'returned'; reviewNote = 'Thiếu ảnh hoá đơn nhiên liệu, bổ sung và gửi lại.'; if (!lines.some(c => c.type === 'Nhiên liệu')) lines.push({ type: 'Nhiên liệu', amount: 450000, method: CASH, invoice: true, note: 'Cây xăng Mipec Long Biên', photo: '' }); }
+      const tripCost = ts.filter(t => t.status === 'done' && t.end === day).reduce((s, t) => s + cost(t), 0);
+      const extra = lines.reduce((s, c) => s + c.amount, 0), reimb = tripCost + lines.filter(c => c.method === CASH).reduce((s, c) => s + c.amount, 0);
+      if (status === 'approved' && !reimb) status = 'paid';
+      const ap = status === 'approved' || status === 'paid', pd = status === 'paid';
+      out.push({ log: { date: day, drvId: dv, drvName: NAMES[dv], carId, plate: car.plate, kmStart: ks, kmEnd: ke, km, route: JSON.stringify(route),
+        routeText: ts.map(t => t.id + ' ' + t.dest).concat(route.map(r => r.time + ' ' + r.from + ' → ' + r.to + ' (' + r.purpose + ')')).join('; '),
+        tripIds: ts.map(t => t.id).join(','), tripCost, extraCost: extra, total: tripCost + extra, reimburse: reimb, status, note: '', reviewNote,
+        submittedAt: base + 19 * 3600e3, approvedBy: ap ? 'Trần Văn Minh' : '', approvedAt: ap ? base + 33 * 3600e3 : '', paidBy: pd ? 'Đinh Thị Hoa' : '', paidAt: pd ? base + 58 * 3600e3 : '', payRef: pd ? 'PC-' + (400 - i) : '', updatedAt: base + 19 * 3600e3 }, lines });
+    });
+  }
+  out.sort((x, y) => x.log.date < y.log.date ? -1 : 1).forEach((o, n) => {
+    const id = 'NK-' + (1001 + n); db.insert('logs', Object.assign({ id }, o.log));
+    o.lines.forEach((c, j) => db.insert('costs', Object.assign({ id: id + '-' + (j + 1), logId: id, date: o.log.date, drvId: o.log.drvId, carId: o.log.carId }, c)));
+  });
+  const L = db.all('logs'), sub = L.filter(l => l.status === 'submitted'), apv = L.filter(l => l.status === 'approved');
+  sub.slice(0, 2).forEach((l, i) => db.insert('notifs', { id: ctx.uuid(), to: 'role:dispatch', text: 'Lái xe ' + l.drvName + ' gửi báo cáo ngày ' + dm(l.date) + ': ' + l.km + ' km, đề nghị hoàn ứng ' + vnd(l.reimburse) + '.', tripId: l.id, t: Date.now() - (30 + i * 40) * 60000, readBy: '' }));
+  apv.slice(0, 2).forEach((l, i) => db.insert('notifs', { id: ctx.uuid(), to: 'role:ketoan', text: 'Báo cáo ' + l.id + ' của lái xe ' + l.drvName + ' đã duyệt, cần hoàn ứng ' + vnd(l.reimburse) + '.', tripId: l.id, t: Date.now() - (60 + i * 90) * 60000, readBy: '' }));
+  const r = L.find(l => l.status === 'returned');
+  if (r) db.insert('notifs', { id: ctx.uuid(), to: 'driver:LX01', text: 'Báo cáo ngày ' + dm(r.date) + ' bị trả lại: ' + r.reviewNote, tripId: r.id, t: Date.now() - 200 * 60000, readBy: '' });
 }
 
 load();

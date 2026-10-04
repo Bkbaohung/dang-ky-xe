@@ -24,7 +24,7 @@ const DL_ICON = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" str
 const ACTIVE = ['assigned', 'accepted', 'ongoing'];
 const OPEN = ['pending', 'assigned', 'accepted', 'ongoing'];
 const DEPTS = ['Kinh doanh', 'Mua hàng', 'Kế toán', 'Sản xuất', 'Cơ điện', 'Hành chính', 'Ban Giám đốc'];
-const ROLE_LABEL = { admin: 'Quản trị', dispatch: 'Điều phối', bgd: 'Ban Giám đốc', sales: 'Nhân viên', driver: 'Lái xe' };
+const ROLE_LABEL = { admin: 'Quản trị', dispatch: 'Điều phối', bgd: 'Ban Giám đốc', sales: 'Nhân viên', driver: 'Lái xe', ketoan: 'Kế toán' };
 const ST = {
   pending: ['Chờ xếp xe', '#7A5410', '#F5ECD7'], assigned: ['Chờ lái xe nhận', '#1F4E79', '#E1ECF6'], accepted: ['Sẵn sàng', '#245B3A', '#E0EFE5'],
   ongoing: ['Đang đi', '#FFFFFF', '#A31E22'], done: ['Hoàn thành', '#5F5750', '#ECE8E2'], rejected: ['Từ chối', '#8C1A1D', '#F6E1E1'], cancelled: ['Đã huỷ', '#5F5750', '#ECE8E2']
@@ -35,9 +35,10 @@ const BAR = {
 };
 const TABS = {
   sales: [['mine', 'Chuyến của tôi', 'Chuyến'], ['schedule', 'Lịch xe', 'Lịch xe']],
-  dispatch: [['inbox', 'Cần xử lý', 'Xử lý'], ['schedule', 'Lịch xe', 'Lịch'], ['fleet', 'Đội xe & lái xe', 'Đội xe'], ['maint', 'Bảo dưỡng', 'Bảo dưỡng'], ['report', 'Báo cáo', 'Báo cáo']],
-  bgd: [['report', 'Tổng quan', 'Tổng quan'], ['inbox', 'Danh sách chuyến', 'Chuyến'], ['schedule', 'Lịch xe', 'Lịch'], ['fleet', 'Đội xe & lái xe', 'Đội xe'], ['maint', 'Bảo dưỡng', 'Bảo dưỡng']],
-  driver: [['runs', 'Lịch chạy', 'Lịch chạy'], ['history', 'Lịch sử', 'Lịch sử']]
+  dispatch: [['inbox', 'Cần xử lý', 'Xử lý'], ['logs', 'Báo cáo lái xe', 'Lái xe'], ['schedule', 'Lịch xe', 'Lịch'], ['fleet', 'Đội xe & lái xe', 'Đội xe'], ['maint', 'Bảo dưỡng', 'Bảo dưỡng'], ['report', 'Báo cáo', 'Thống kê']],
+  bgd: [['report', 'Tổng quan', 'Tổng quan'], ['inbox', 'Danh sách chuyến', 'Chuyến'], ['logs', 'Chi phí lái xe', 'Chi phí'], ['schedule', 'Lịch xe', 'Lịch'], ['fleet', 'Đội xe & lái xe', 'Đội xe'], ['maint', 'Bảo dưỡng', 'Bảo dưỡng']],
+  ketoan: [['logs', 'Chi phí lái xe', 'Chi phí'], ['mreq', 'Thanh toán bảo dưỡng', 'Bảo dưỡng'], ['mine', 'Chuyến của tôi', 'Chuyến'], ['report', 'Báo cáo chi phí', 'Báo cáo'], ['schedule', 'Lịch xe', 'Lịch xe']],
+  driver: [['runs', 'Lịch chạy', 'Lịch chạy'], ['daily', 'Báo cáo ngày', 'Báo cáo'], ['mreq', 'Bảo dưỡng xe', 'Bảo dưỡng'], ['history', 'Lịch sử', 'Lịch sử']]
 };
 TABS.admin = TABS.dispatch.concat([['users', 'Người dùng', 'Tài khoản']]);
 
@@ -70,7 +71,7 @@ function vLogin() {
       <button class="btn btn-p btn-lg" ${S.busy ? 'disabled' : ''}>${S.busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
       ${canInstall() ? `<button type="button" class="btn btn-s btn-lg" data-a="install">${DL_ICON}Tải app về điện thoại / máy tính</button>` : ''}
       ${demo ? `<div class="demo-box"><b>Chế độ dùng thử</b> (chưa kết nối Google Sheet). Mật khẩu chung: <code>123456</code>
-        <div class="demo-users">${['admin', 'dieuphoi', 'nhanvien', 'laixe', 'giamdoc'].map(u => `<button type="button" class="chip" data-a="demoLogin" data-v="${u}">${u}</button>`).join('')}</div></div>` : `<div class="muted small">Quên mật khẩu? Liên hệ quản trị hệ thống để được cấp lại.</div>`}
+        <div class="demo-users">${['admin', 'dieuphoi', 'nhanvien', 'laixe', 'ketoan', 'giamdoc'].map(u => `<button type="button" class="chip" data-a="demoLogin" data-v="${u}">${u}</button>`).join('')}</div></div>` : `<div class="muted small">Quên mật khẩu? Liên hệ quản trị hệ thống để được cấp lại.</div>`}
     </form></div>`;
 }
 
@@ -82,9 +83,11 @@ function vApp() {
   const overN = d.cars.reduce((s, c) => s + [dateCell(c.dk), kmCell(c), dateCell(c.bh)].filter(x => x.lvl === 2).length, 0);
   const myAssigned = d.trips.filter(t => String(t.drvId) === String(u.driverId) && t.status === 'assigned').length;
   const badges = { inbox: (role === 'bgd' ? 0 : cnt('pending') + cf.pairs.length), maint: overN, runs: myAssigned };
+  Object.assign(badges, logBadges(role));
+  reqBadges(role, badges);
   const unread = d.notifs.filter(n => !n.read).length;
   const tabLabel = (tabs.find(x => x[0] === S.tab) || [])[1] || '';
-  const canBook = role === 'sales' || role === 'bgd';
+  const canBook = role === 'sales' || role === 'bgd' || role === 'ketoan';
   const nav = tabs.map(([k, l, sh]) => `<button class="nav-i ${k === S.tab ? 'on' : ''}" data-a="tab" data-v="${k}"><span class="nav-bar"></span><span class="nav-l">${desktop ? esc(l) : esc(sh)}</span>${badges[k] ? `<span class="nav-b">${badges[k]}</span>` : ''}</button>`).join('');
   return `<div class="shell">
   ${desktop ? `<aside class="side">
@@ -105,20 +108,29 @@ function vApp() {
     </header>
     <main class="main">${vTab(cf)}</main>
   </div></div>
-  ${canBook && !desktop && !S.sel ? `<button class="fab" data-a="newTrip">+ Đặt xe</button>` : ''}
+  ${canBook && !desktop && !S.sel && !S.logSel && !S.logEdit && !S.reqSel && !S.reqEdit ? `<button class="fab" data-a="newTrip">+ Đặt xe</button>` : ''}
   ${desktop ? '' : `<nav class="bnav">${nav}</nav>`}
   ${S.notifOpen ? vNotifs() : ''}
   ${S.sel ? vDrawer(cf) : ''}
+  ${S.logSel ? vLogDrawer() : ''}
+  ${S.logEdit ? vLogEdit() : ''}
+  ${S.reqSel ? vReqDrawer() : ''}
+  ${S.reqEdit ? vReqEdit() : ''}
+  ${S.viewer ? vViewer() : ''}
   ${S.form ? vForm() : ''}
   ${S.toast ? `<div class="toast ${S.toastErr ? 'toast-e' : ''}">${esc(S.toast)}</div>` : ''}`;
 }
 
 function vTab(cf) {
   switch (S.tab) {
-    case 'mine': case 'runs': case 'history': case 'inbox': return vLists(cf);
+    case 'runs': return logReminder() + vLists(cf);
+    case 'mine': case 'history': case 'inbox': return vLists(cf);
+    case 'daily': return vDaily();
+    case 'logs': return vLogs();
     case 'schedule': return vSchedule(cf);
     case 'fleet': return vFleet();
-    case 'maint': return vMaint();
+    case 'maint': return vReqs() + '<div style="height:10px"></div>' + vMaint();
+    case 'mreq': return vReqs();
     case 'report': return vReport();
     case 'users': return vUsers();
   }
@@ -253,10 +265,10 @@ function vReport() {
   const cur = done.filter(t => t.end >= from && t.end <= T), prev = done.filter(t => t.end >= pfrom && t.end <= pto);
   const kmS = ts => ts.reduce((s, t) => s + Math.max(0, N(t.kmEnd) - N(t.kmStart)), 0), csS = ts => ts.reduce((s, t) => s + cost(t), 0), cdS = ts => ts.reduce((s, t) => s + diffD(t.start, t.end) + 1, 0);
   const dl = (a, b) => b ? `${a >= b ? '+' : ''}${Math.round((a - b) / b * 100)}% so với kỳ trước` : 'Chưa có số liệu kỳ trước';
-  const kc = kmS(cur), cc = csS(cur);
-  const kpis = [['Số chuyến', cur.length, dl(cur.length, prev.length)], ['Tổng quãng đường', num(kc) + ' km', dl(kc, kmS(prev))], ['Tổng chi phí', tr(cc), dl(cc, csS(prev))],
-    ['Chi phí bình quân', kc ? vnd(cc / kc) + '/km' : '—', 'Nhiên liệu, cầu đường, gửi xe'], ['Tỷ lệ sử dụng xe', (d.cars.length ? Math.round(cdS(cur) / (d.cars.length * len) * 100) : 0) + '%', 'Ngày-xe có chuyến / tổng ngày-xe']];
-  const ms = []; for (let i = 5; i >= 0; i--) { const m = new Date(now.getFullYear(), now.getMonth() - i, 1), a = iso(m), b = iso(new Date(m.getFullYear(), m.getMonth() + 1, 0)); ms.push({ l: 'T' + (m.getMonth() + 1), v: csS(done.filter(t => t.end >= a && t.end <= b)), cur: i === 0 }); }
+  const kc = kmS(cur), cc = csS(cur) + extraCosts(from, T);
+  const kpis = [['Số chuyến', cur.length, dl(cur.length, prev.length)], ['Tổng quãng đường', num(kc) + ' km', dl(kc, kmS(prev))], ['Tổng chi phí', tr(cc), dl(cc, csS(prev) + extraCosts(pfrom, pto))],
+    ['Chi phí bình quân', kc ? vnd(cc / kc) + '/km' : '—', 'Gồm chi phí chuyến và phát sinh lái xe'], ['Tỷ lệ sử dụng xe', (d.cars.length ? Math.round(cdS(cur) / (d.cars.length * len) * 100) : 0) + '%', 'Ngày-xe có chuyến / tổng ngày-xe']];
+  const ms = []; for (let i = 5; i >= 0; i--) { const m = new Date(now.getFullYear(), now.getMonth() - i, 1), a = iso(m), b = iso(new Date(m.getFullYear(), m.getMonth() + 1, 0)); ms.push({ l: 'T' + (m.getMonth() + 1), v: csS(done.filter(t => t.end >= a && t.end <= b)) + extraCosts(a, b), cur: i === 0 }); }
   const mx = Math.max(1, ...ms.map(m => m.v));
   const dg = {}; cur.forEach(t => { const k = t.dept || 'Khác'; dg[k] = dg[k] || { n: 0, c: 0 }; dg[k].n++; dg[k].c += cost(t); });
   const dmx = Math.max(1, ...Object.values(dg).map(x => x.c));
@@ -269,7 +281,7 @@ function vReport() {
       <div class="card" style="display:flex;flex-direction:column;gap:12px"><b>Theo phòng ban</b>${Object.keys(dg).length ? Object.entries(dg).sort((a, b) => b[1].c - a[1].c).map(([n, x]) => `<div><div class="row-b small"><span>${esc(n)} <span class="muted">· ${x.n} chuyến</span></span><b>${tr(x.c)}</b></div><div class="meter"><i style="width:${Math.round(x.c / dmx * 100)}%;background:#B8892B"></i></div></div>`).join('') : '<div class="muted small">Chưa có số liệu trong kỳ.</div>'}</div>
     </div>
     <div class="card" style="padding:0;overflow-x:auto"><div style="min-width:620px"><div class="rp-row rp-h"><span>Xe</span><span>Chuyến</span><span>Quãng đường</span><span>Chi phí</span><span>Tỷ lệ sử dụng</span></div>
-      ${d.cars.map(c => { const ts = cur.filter(t => String(t.carId) === String(c.id)), u = Math.min(100, Math.round(cdS(ts) / len * 100)); return `<div class="rp-row"><span><b class="mono">${esc(c.plate)}</b> <span class="muted">${esc(c.model)}</span></span><span>${ts.length}</span><span>${num(kmS(ts))} km</span><span>${tr(csS(ts))}</span><span class="row"><span class="meter" style="flex:1;height:6px"><i style="width:${u}%;background:#A31E22"></i></span><span style="width:36px;text-align:right">${u}%</span></span></div>`; }).join('')}
+      ${d.cars.map(c => { const ts = cur.filter(t => String(t.carId) === String(c.id)), u = Math.min(100, Math.round(cdS(ts) / len * 100)); return `<div class="rp-row"><span><b class="mono">${esc(c.plate)}</b> <span class="muted">${esc(c.model)}</span></span><span>${ts.length}</span><span>${num(kmS(ts))} km</span><span>${tr(csS(ts) + extraCosts(from, T, c.id))}</span><span class="row"><span class="meter" style="flex:1;height:6px"><i style="width:${u}%;background:#A31E22"></i></span><span style="width:36px;text-align:right">${u}%</span></span></div>`; }).join('')}
     </div></div>
     <div><button class="btn btn-s" data-a="exportCsv">Tải danh sách chuyến trong kỳ (CSV)</button></div>`;
 }
@@ -286,8 +298,9 @@ function vUsers() {
     <div class="card list">${rows}</div>
     <div class="card small muted" style="line-height:1.6"><b style="color:#221C18">Phân quyền</b><br>
     <b>Nhân viên</b>: đặt xe, xem và huỷ chuyến của mình, xem lịch xe.<br>
-    <b>Điều phối</b>: xếp xe/lái xe, từ chối yêu cầu, quản lý đội xe, bảo dưỡng, xem báo cáo.<br>
-    <b>Lái xe</b>: nhận/từ chối chuyến được giao, ghi km và chi phí.<br>
+    <b>Điều phối</b>: xếp xe/lái xe, từ chối yêu cầu, duyệt báo cáo ngày của lái xe, quản lý đội xe, bảo dưỡng, xem báo cáo.<br>
+    <b>Lái xe</b>: nhận/từ chối chuyến được giao, ghi km, gửi báo cáo lịch trình &amp; chi phí hằng ngày.<br>
+    <b>Kế toán</b>: thanh toán hoàn ứng cho báo cáo ngày và chi phí bảo dưỡng, sửa chữa đã duyệt, xem báo cáo chi phí, đặt xe.<br>
     <b>Ban Giám đốc</b>: xem toàn bộ chuyến, lịch xe, báo cáo (chỉ xem), có thể đặt xe.<br>
     <b>Quản trị</b>: toàn quyền Điều phối + quản lý tài khoản.</div>`;
 }
